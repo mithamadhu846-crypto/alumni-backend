@@ -1,49 +1,49 @@
 // controllers/resumeController.js
-// Resume analysis using Groq API (completely free, no credit card needed)
 const Groq = require('groq-sdk');
-
-const buildPrompt = (resumeText, jobDescription, targetRole) => `
-You are an expert ATS (Applicant Tracking System) resume analyzer.
-Analyze the resume below and return ONLY a valid JSON object — no markdown, no explanation, no backticks.
-
-${targetRole     ? `Target Role: ${targetRole}`         : ''}
-${jobDescription ? `Job Description:\n${jobDescription}` : ''}
-
-Resume:
-${resumeText}
-
-Return this exact JSON structure:
-{
-  "atsScore": <number 0-100>,
-  "grade": <"A"|"B"|"C"|"D"|"F">,
-  "sectionsFound": ["Experience","Education","Skills"],
-  "extractedSkills": ["skill1","skill2"],
-  "matchedKeywords": [],
-  "missingKeywords": [],
-  "suggestions": ["tip1","tip2","tip3","tip4"],
-  "stats": { "wordCount": 300, "skillCount": 5 },
-  "source": "groq"
-}
-Scoring: 80-100=A, 65-79=B, 45-64=C, 0-44=D/F
-`;
 
 const callGroq = async (resumeText, jobDescription, targetRole) => {
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   const completion = await groq.chat.completions.create({
-    model:    'llama-3.3-70b-versatile',
+    model:       'llama-3.3-70b-versatile',
+    temperature: 0.1,
+    max_tokens:  1000,
     messages: [
-      { role: 'system', content: 'You are an expert ATS resume analyzer. Always respond with valid JSON only, no markdown, no backticks.' },
-      { role: 'user',   content: buildPrompt(resumeText, jobDescription, targetRole) },
+      {
+        role:    'system',
+        content: 'You are a JSON API. You only output valid JSON. No markdown. No backticks. No explanation. Only a JSON object.',
+      },
+      {
+        role:    'user',
+        content: `Analyze this resume and return a JSON object with these exact keys:
+- atsScore: integer 0-100
+- grade: one of "A","B","C","D","F"  (A=80-100, B=65-79, C=45-64, D/F=0-44)
+- sectionsFound: array of section names found (e.g. ["Experience","Education","Skills"])
+- extractedSkills: array of skills found in resume
+- matchedKeywords: array of keywords from job description found in resume (empty array if no job description)
+- missingKeywords: array of important keywords missing from resume (empty array if no job description)
+- suggestions: array of 4 specific improvement tips
+- stats: object with wordCount and skillCount as integers
+- source: "groq"
+
+${targetRole     ? `Target Role: ${targetRole}`         : ''}
+${jobDescription ? `Job Description: ${jobDescription}` : ''}
+
+Resume text:
+${resumeText}`,
+      },
     ],
-    temperature:     0.3,
-    max_tokens:      1000,
-    response_format: { type: 'json_object' },
   });
-  const raw = completion.choices[0].message.content.trim();
+
+  const raw = completion.choices[0].message.content.trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
   return JSON.parse(raw);
 };
 
-// Extract text from PDF buffer — no external library needed
+// Extract text from PDF buffer
 const extractTextFromPDF = (buffer) => {
   const str = buffer.toString('latin1');
   const textParts = [];
@@ -63,7 +63,7 @@ const extractTextFromPDF = (buffer) => {
   return textParts.join(' ').replace(/\s+/g, ' ').trim();
 };
 
-// ── POST /resume/analyze  (text) ─────────────────────────────────────────────
+// ── POST /resume/analyze ─────────────────────────────────────────────────────
 const analyzeResume = async (req, res) => {
   try {
     if (!process.env.GROQ_API_KEY) {
@@ -81,7 +81,7 @@ const analyzeResume = async (req, res) => {
   }
 };
 
-// ── POST /resume/upload  (PDF) ───────────────────────────────────────────────
+// ── POST /resume/upload ──────────────────────────────────────────────────────
 const uploadResume = async (req, res) => {
   try {
     if (!process.env.GROQ_API_KEY) {
