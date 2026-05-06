@@ -1,4 +1,4 @@
-// ─── Startup Controller ───────────────────────────────────────────────────────
+﻿// ─── Startup Controller ───────────────────────────────────────────────────────
 // controllers/startupController.js (inline here for conciseness)
 const { Startup } = require('../models/Community');
 const User = require('../models/User');
@@ -9,11 +9,18 @@ const createStartup = async (req, res) => {
       ...req.body,
       founders: [req.user._id],
     });
-    await User.findByIdAndUpdate(req.user._id, { $inc: { 'contributions.startupsListed': 1 } });
-    await req.user.addPoints(75, 'startup_listed');
+    try {
+      await User.findByIdAndUpdate(req.user._id, { $inc: { 'contributions.startupsListed': 1 } });
+      if (typeof req.user.addPoints === 'function') {
+        await req.user.addPoints(75, 'startup_listed');
+      }
+    } catch (e) {
+      console.log('Points update failed (non-critical):', e.message);
+    }
     res.status(201).json({ message: 'Startup submitted for review.', startup });
   } catch (error) {
-    res.status(500).json({ error: 'Could not create startup.' });
+    console.error('createStartup error:', error.message);
+    res.status(500).json({ error: 'Could not create startup: ' + error.message });
   }
 };
 
@@ -79,3 +86,4 @@ router.patch('/:id/approve', protect, authorize('admin'), approveStartup);
 router.post('/:id/like', protect, likeStartup);
 
 module.exports = router;
+
