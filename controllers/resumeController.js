@@ -34,13 +34,26 @@ ${resumeText}`,
     ],
   });
 
-  const raw = completion.choices[0].message.content.trim()
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
+  const raw = completion.choices[0].message.content.trim();
 
-  return JSON.parse(raw);
+  // Robustly extract JSON object even if model adds text around it
+  const extractJSON = (str) => {
+    // Try direct parse first
+    try { return JSON.parse(str); } catch {}
+    // Strip markdown fences
+    const stripped = str
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    try { return JSON.parse(stripped); } catch {}
+    // Find first { and last } and extract
+    const start = str.indexOf('{');
+    const end   = str.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      try { return JSON.parse(str.slice(start, end + 1)); } catch {}
+    }
+    throw new Error('Could not parse JSON from AI response');
+  };
+
+  return extractJSON(raw);
 };
 
 // Extract text from PDF buffer
