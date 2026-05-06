@@ -81,9 +81,21 @@ const router = express.Router();
 const { protect, authorize } = require('../middleware/auth');
 
 router.get('/', protect, getStartups);
+router.get('/pending', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { Startup } = require('../models/Community');
+    const startups = await Startup.find({ isApproved: false })
+      .populate('founders', 'name avatar role')
+      .sort({ createdAt: -1 });
+    res.json({ startups });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 router.post('/', protect, createStartup);
 router.patch('/:id/approve', protect, authorize('admin'), approveStartup);
 router.post('/:id/like', protect, likeStartup);
 
 module.exports = router;
+
 
