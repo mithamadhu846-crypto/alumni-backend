@@ -7,7 +7,7 @@ const callGroq = async (resumeText, jobDescription, targetRole) => {
   const completion = await groq.chat.completions.create({
     model:           'llama-3.1-8b-instant',
     temperature:     0.1,
-    max_tokens:      1500,
+    max_tokens:      2048,
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -31,7 +31,7 @@ ${targetRole     ? `Target Role: ${targetRole}`         : ''}
 ${jobDescription ? `Job Description: ${jobDescription}` : ''}
 
 Resume:
-${resumeText.substring(0, 3000)}`,
+${resumeText.substring(0, 2000)}`,
       },
     ],
   });
