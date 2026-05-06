@@ -3,57 +3,38 @@ const Groq = require('groq-sdk');
 
 const callGroq = async (resumeText, jobDescription, targetRole) => {
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  
   const completion = await groq.chat.completions.create({
-    model:       'llama-3.3-70b-versatile',
+    model:       'llama3-8b-8192',
     temperature: 0.1,
-    max_tokens:  1000,
+    max_tokens:  1500,
     messages: [
       {
-        role:    'system',
-        content: 'You are a JSON API. You only output valid JSON. No markdown. No backticks. No explanation. Only a JSON object.',
-      },
-      {
         role:    'user',
-        content: `Analyze this resume and return a JSON object with these exact keys:
-- atsScore: integer 0-100
-- grade: one of "A","B","C","D","F"  (A=80-100, B=65-79, C=45-64, D/F=0-44)
-- sectionsFound: array of section names found (e.g. ["Experience","Education","Skills"])
-- extractedSkills: array of skills found in resume
-- matchedKeywords: array of keywords from job description found in resume (empty array if no job description)
-- missingKeywords: array of important keywords missing from resume (empty array if no job description)
-- suggestions: array of 4 specific improvement tips
-- stats: object with wordCount and skillCount as integers
-- source: "groq"
+        content: `Analyze this resume. Respond with ONLY a JSON object, nothing else.
 
 ${targetRole     ? `Target Role: ${targetRole}`         : ''}
 ${jobDescription ? `Job Description: ${jobDescription}` : ''}
 
-Resume text:
-${resumeText}`,
+Resume:
+${resumeText}
+
+JSON format:
+{"atsScore":75,"grade":"B","sectionsFound":["Experience","Education","Skills"],"extractedSkills":["skill1","skill2"],"matchedKeywords":[],"missingKeywords":[],"suggestions":["tip1","tip2","tip3","tip4"],"stats":{"wordCount":300,"skillCount":5},"source":"groq"}`,
       },
     ],
   });
 
   const raw = completion.choices[0].message.content.trim();
+  console.log('Groq raw response:', raw.substring(0, 300));
 
-  // Robustly extract JSON object even if model adds text around it
-  const extractJSON = (str) => {
-    // Try direct parse first
-    try { return JSON.parse(str); } catch {}
-    // Strip markdown fences
-    const stripped = str
-      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-    try { return JSON.parse(stripped); } catch {}
-    // Find first { and last } and extract
-    const start = str.indexOf('{');
-    const end   = str.lastIndexOf('}');
-    if (start !== -1 && end !== -1 && end > start) {
-      try { return JSON.parse(str.slice(start, end + 1)); } catch {}
-    }
-    throw new Error('Could not parse JSON from AI response');
-  };
-
-  return extractJSON(raw);
+  // Extract JSON robustly
+  const start = raw.indexOf('{');
+  const end   = raw.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('AI did not return valid JSON. Raw: ' + raw.substring(0, 100));
+  }
+  return JSON.parse(raw.slice(start, end + 1));
 };
 
 // Extract text from PDF buffer
