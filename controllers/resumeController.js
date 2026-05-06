@@ -3,36 +3,46 @@ const Groq = require('groq-sdk');
 
 const callGroq = async (resumeText, jobDescription, targetRole) => {
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  
+
   const completion = await groq.chat.completions.create({
-    model:       'llama-3.1-8b-instant',
-    temperature: 0.1,
-    max_tokens:  1500,
+    model:           'llama-3.1-8b-instant',
+    temperature:     0.1,
+    max_tokens:      1500,
+    response_format: { type: 'json_object' },
     messages: [
       {
+        role:    'system',
+        content: 'You are a resume analyzer API. You always respond with valid JSON only.',
+      },
+      {
         role:    'user',
-        content: `Analyze this resume. Respond with ONLY a JSON object, nothing else.
+        content: `Analyze this resume and return a JSON object with these keys:
+- atsScore (integer 0-100)
+- grade (string: "A" for 80-100, "B" for 65-79, "C" for 45-64, "F" for 0-44)
+- sectionsFound (array of strings like ["Experience","Education","Skills"])
+- extractedSkills (array of skill strings found in resume)
+- matchedKeywords (array of keywords from job description found in resume, empty if no JD)
+- missingKeywords (array of keywords from job description missing in resume, empty if no JD)
+- suggestions (array of exactly 4 improvement tip strings)
+- stats (object with wordCount and skillCount as integers)
+- source (string "groq")
 
 ${targetRole     ? `Target Role: ${targetRole}`         : ''}
 ${jobDescription ? `Job Description: ${jobDescription}` : ''}
 
 Resume:
-${resumeText}
-
-JSON format:
-{"atsScore":75,"grade":"B","sectionsFound":["Experience","Education","Skills"],"extractedSkills":["skill1","skill2"],"matchedKeywords":[],"missingKeywords":[],"suggestions":["tip1","tip2","tip3","tip4"],"stats":{"wordCount":300,"skillCount":5},"source":"groq"}`,
+${resumeText.substring(0, 3000)}`,
       },
     ],
   });
 
   const raw = completion.choices[0].message.content.trim();
-  console.log('Groq raw response:', raw.substring(0, 300));
+  console.log('Groq raw:', raw.substring(0, 200));
 
-  // Extract JSON robustly
   const start = raw.indexOf('{');
   const end   = raw.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) {
-    throw new Error('AI did not return valid JSON. Raw: ' + raw.substring(0, 100));
+    throw new Error('AI did not return valid JSON. Raw: ' + raw.substring(0, 150));
   }
   return JSON.parse(raw.slice(start, end + 1));
 };
