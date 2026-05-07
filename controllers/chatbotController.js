@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI Chatbot Controller
  * Powered by OpenAI GPT → Smart keyword fallback
  */
