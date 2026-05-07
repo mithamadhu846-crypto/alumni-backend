@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Users Controller
  * Profile management + Alumni Matching Algorithm
  */
@@ -220,145 +220,80 @@ exports.getAlumniDirectory = async (req, res) => {
 
 exports.getSkillGapAnalysis = async (req, res) => {
   try {
-    const student = await User.findById(req.user._id);
-    const { targetRole } = req.query;
-
-    const role = targetRole || student.targetRole;
-    if (!role) {
-      return res.status(400).json({ error: 'Target role required for skill gap analysis.' });
-    }
-
-    // Find alumni in target role and extract their skills
-    const roleAlumni = await User.find({
-      role: 'alumni',
-      currentRole: { $regex: role, $options: 'i' },
-      isActive: true,
-    }).select('skills');
-
-    // Count skill frequency
-    const skillFrequency = {};
-    roleAlumni.forEach(alum => {
-      alum.skills.forEach(skill => {
-        const s = skill.toLowerCase();
-        skillFrequency[s] = (skillFrequency[s] || 0) + 1;
-      });
-    });
-
-    // Sort by frequency
-    const requiredSkills = Object.entries(skillFrequency)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 15)
-      .map(([skill, count]) => ({ skill, frequency: count, total: roleAlumni.length }));
-
-    // Identify gaps
-    const studentSkillSet = new Set(student.skills.map(s => s.toLowerCase()));
-    const gaps = requiredSkills.filter(s => !studentSkillSet.has(s.skill));
-    const strengths = requiredSkills.filter(s => studentSkillSet.has(s.skill));
-
-    res.json({
-      targetRole: role,
-      requiredSkills,
-      gaps: gaps.slice(0, 8),
-      strengths,
-      matchPercentage: Math.round((strengths.length / Math.max(1, requiredSkills.length)) * 100),
-      basedOnAlumniCount: roleAlumni.length,
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Skill gap analysis failed.' });
-  }
-};
-
-// ─── Admin: Toggle User Status ────────────────────────────────────────────────
-
-exports.toggleUserStatus = async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found.' });
-
-    user.isActive = !user.isActive;
-    await user.save();
-
-    res.json({ message: `User ${user.isActive ? 'activated' : 'deactivated'}.`, user });
-  } catch (error) {
-    res.status(500).json({ error: 'Could not update user status.' });
-  }
-};
-
-// ─── Admin: Change User Role ──────────────────────────────────────────────────
-
-exports.changeUserRole = async (req, res) => {
-  try {
-    const { role } = req.body;
-    const validRoles = ['student', 'alumni', 'faculty', 'admin'];
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({ error: 'Invalid role.' });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { role },
-      { new: true }
-    ).select('-password');
-
-    if (!user) return res.status(404).json({ error: 'User not found.' });
-
-    res.json({ message: 'Role updated.', user });
-  } catch (error) {
-    res.status(500).json({ error: 'Could not change role.' });
-  }
-};
-
-// ── GET /users/skill-gap ─────────────────────────────────────────────────────
-exports.getSkillGapAnalysis = async (req, res) => {
-  try {
     const { targetRole } = req.query;
     const currentUser = await User.findById(req.user._id);
     const role = targetRole || currentUser?.targetRole || '';
 
     if (!role) {
-      return res.json({
-        matchPercentage: 0,
-        gaps: [],
-        strengths: [],
-        targetRole: '',
-      });
+      return res.json({ matchPercentage: 0, gaps: [], strengths: [], targetRole: '' });
     }
 
-    // Get all alumni with same target role to find common skills
-    const alumni = await User.find({
-      role: 'alumni',
-      'skills.0': { $exists: true },
-    }).select('skills').limit(100);
-
-    // Count skill frequencies among alumni
-    const skillFreq = {};
-    alumni.forEach(a => {
-      (a.skills || []).forEach(sk => {
-        const key = sk.toLowerCase().trim();
-        skillFreq[key] = (skillFreq[key] || 0) + 1;
-      });
-    });
-
-    const total = alumni.length || 1;
     const userSkills = (currentUser.skills || []).map(s => s.toLowerCase().trim());
 
-    // Find gaps and strengths
-    const allSkills = Object.entries(skillFreq)
-      .filter(([, freq]) => freq >= 2)
-      .sort((a, b) => b[1] - a[1]);
+    // Role-based required skills
+    const roleLower = role.toLowerCase();
+    let requiredSkills = [];
 
-    const gaps = allSkills
-      .filter(([sk]) => !userSkills.includes(sk))
-      .slice(0, 10)
-      .map(([skill, frequency]) => ({ skill, frequency, total }));
+    try {
+      const Groq = require('groq-sdk');
+      const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.1,
+        max_tokens: 500,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'You are a career advisor API. Respond with JSON only.' },
+          { role: 'user', content: `List the top 15 most important technical and soft skills required for a "${role}" role. Return JSON: { "skills": ["skill1", "skill2", ...] }` },
+        ],
+      });
+      const raw = completion.choices[0].message.content.trim();
+      const start = raw.indexOf('{');
+      const end = raw.lastIndexOf('}');
+      if (start !== -1 && end !== -1) {
+        const parsed = JSON.parse(raw.slice(start, end + 1));
+        requiredSkills = (parsed.skills || []).map(s => s.toLowerCase().trim());
+      }
+    } catch (e) {
+      console.log('Groq fallback for skill gap:', e.message);
+    }
 
-    const strengths = allSkills
-      .filter(([sk]) => userSkills.includes(sk))
-      .slice(0, 10)
-      .map(([skill, frequency]) => ({ skill, frequency, total }));
+    // Fallback if Groq fails
+    if (requiredSkills.length === 0) {
+      if (roleLower.includes('software') || roleLower.includes('developer') || roleLower.includes('engineer')) {
+        requiredSkills = ['javascript', 'python', 'react', 'node.js', 'sql', 'git', 'rest apis', 'docker', 'aws', 'system design', 'data structures', 'algorithms', 'agile', 'communication', 'problem solving'];
+      } else if (roleLower.includes('data') || roleLower.includes('analyst') || roleLower.includes('scientist')) {
+        requiredSkills = ['python', 'sql', 'machine learning', 'data visualization', 'statistics', 'excel', 'tableau', 'pandas', 'numpy', 'tensorflow', 'communication', 'critical thinking', 'r', 'power bi', 'hadoop'];
+      } else if (roleLower.includes('hr') || roleLower.includes('human resource')) {
+        requiredSkills = ['recruitment', 'talent acquisition', 'employee relations', 'hr policies', 'payroll', 'performance management', 'onboarding', 'communication', 'conflict resolution', 'ms office', 'labor laws', 'training', 'leadership', 'organizational skills', 'empathy'];
+      } else if (roleLower.includes('design') || roleLower.includes('ui') || roleLower.includes('ux')) {
+        requiredSkills = ['figma', 'adobe xd', 'sketch', 'user research', 'wireframing', 'prototyping', 'html', 'css', 'typography', 'color theory', 'usability testing', 'communication', 'creativity', 'photoshop', 'illustrator'];
+      } else if (roleLower.includes('market')) {
+        requiredSkills = ['seo', 'social media', 'content marketing', 'google analytics', 'email marketing', 'copywriting', 'brand strategy', 'market research', 'ppc', 'crm', 'communication', 'creativity', 'data analysis', 'excel', 'canva'];
+      } else {
+        requiredSkills = ['communication', 'leadership', 'problem solving', 'teamwork', 'time management', 'critical thinking', 'ms office', 'project management', 'adaptability', 'presentation skills', 'data analysis', 'customer service', 'negotiation', 'planning', 'decision making'];
+      }
+    }
 
-    const matchPercentage = allSkills.length > 0
-      ? Math.round((strengths.length / Math.min(allSkills.length, 10)) * 100)
+    const gaps = requiredSkills
+      .filter(sk => !userSkills.some(us => us.includes(sk) || sk.includes(us)))
+      .map((skill, i) => ({
+        skill: skill.charAt(0).toUpperCase() + skill.slice(1),
+        frequency: Math.max(1, 15 - i),
+        total: 15,
+        priority: i < 5 ? 'High' : i < 10 ? 'Medium' : 'Low',
+      }));
+
+    const strengths = requiredSkills
+      .filter(sk => userSkills.some(us => us.includes(sk) || sk.includes(us)))
+      .map(skill => ({
+        skill: skill.charAt(0).toUpperCase() + skill.slice(1),
+        frequency: 10,
+        total: 15,
+      }));
+
+    const matchPercentage = requiredSkills.length > 0
+      ? Math.round((strengths.length / requiredSkills.length) * 100)
       : 0;
 
     return res.json({ matchPercentage, gaps, strengths, targetRole: role });
