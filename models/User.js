@@ -1,4 +1,4 @@
-/**
+﻿/**
  * User Model
  * Supports 4-tier RBAC: student, alumni, faculty, admin
  */
@@ -51,7 +51,7 @@ const userSchema = new mongoose.Schema({
   isMentor: { type: Boolean, default: false },
   mentorshipAreas: [{ type: String }],
   menteeCount: { type: Number, default: 0 },
-  mentorRating: { type: Number, default: 0, min: 0, max: 5 },
+  mentorRating: { type: Number, default: 0, min: 0, max: 10 },
   mentorRatingCount: { type: Number, default: 0 },
 
   // ─── Leaderboard / Gamification ───────────────────────────────────────────────
@@ -155,3 +155,4 @@ userSchema.methods.addPoints = async function (amount, reason) {
 
 const User = mongoose.model('User', userSchema);
 module.exports = User;
+
