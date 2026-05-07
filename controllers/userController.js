@@ -307,3 +307,63 @@ exports.changeUserRole = async (req, res) => {
     res.status(500).json({ error: 'Could not change role.' });
   }
 };
+
+// ── GET /users/skill-gap ─────────────────────────────────────────────────────
+exports.getSkillGapAnalysis = async (req, res) => {
+  try {
+    const { targetRole } = req.query;
+    const currentUser = await User.findById(req.user._id);
+    const role = targetRole || currentUser?.targetRole || '';
+
+    if (!role) {
+      return res.json({
+        matchPercentage: 0,
+        gaps: [],
+        strengths: [],
+        targetRole: '',
+      });
+    }
+
+    // Get all alumni with same target role to find common skills
+    const alumni = await User.find({
+      role: 'alumni',
+      'skills.0': { $exists: true },
+    }).select('skills').limit(100);
+
+    // Count skill frequencies among alumni
+    const skillFreq = {};
+    alumni.forEach(a => {
+      (a.skills || []).forEach(sk => {
+        const key = sk.toLowerCase().trim();
+        skillFreq[key] = (skillFreq[key] || 0) + 1;
+      });
+    });
+
+    const total = alumni.length || 1;
+    const userSkills = (currentUser.skills || []).map(s => s.toLowerCase().trim());
+
+    // Find gaps and strengths
+    const allSkills = Object.entries(skillFreq)
+      .filter(([, freq]) => freq >= 2)
+      .sort((a, b) => b[1] - a[1]);
+
+    const gaps = allSkills
+      .filter(([sk]) => !userSkills.includes(sk))
+      .slice(0, 10)
+      .map(([skill, frequency]) => ({ skill, frequency, total }));
+
+    const strengths = allSkills
+      .filter(([sk]) => userSkills.includes(sk))
+      .slice(0, 10)
+      .map(([skill, frequency]) => ({ skill, frequency, total }));
+
+    const matchPercentage = allSkills.length > 0
+      ? Math.round((strengths.length / Math.min(allSkills.length, 10)) * 100)
+      : 0;
+
+    return res.json({ matchPercentage, gaps, strengths, targetRole: role });
+  } catch (error) {
+    console.error('getSkillGapAnalysis error:', error.message);
+    res.status(500).json({ error: 'Could not analyze skill gap.' });
+  }
+};
