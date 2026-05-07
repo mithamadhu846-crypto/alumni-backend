@@ -302,3 +302,55 @@ exports.getSkillGapAnalysis = async (req, res) => {
     res.status(500).json({ error: 'Could not analyze skill gap.' });
   }
 };
+
+exports.updateTargetRole = async (req, res) => {
+  try {
+    const { targetRole } = req.body;
+    if (!targetRole) return res.status(400).json({ error: 'Target role is required.' });
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { targetRole },
+      { new: true }
+    ).select('-password');
+    res.json({ message: 'Target role updated.', user });
+  } catch (error) {
+    console.error('updateTargetRole error:', error.message);
+    res.status(500).json({ error: 'Could not update target role.' });
+  }
+};
+
+exports.updateTargetRole = async (req, res) => {
+  try {
+    const { targetRole } = req.body;
+    if (!targetRole) return res.status(400).json({ error: 'Target role is required.' });
+    const user = await User.findByIdAndUpdate(req.user._id, { targetRole }, { new: true }).select('-password');
+    res.json({ message: 'Target role updated.', user });
+  } catch (error) {
+    console.error('updateTargetRole error:', error.message);
+    res.status(500).json({ error: 'Could not update target role.' });
+  }
+};
+exports.toggleUserStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    user.isActive = !user.isActive;
+    await user.save();
+    res.json({ message: `User ${user.isActive ? 'activated' : 'deactivated'}.`, user });
+  } catch (error) {
+    res.status(500).json({ error: 'Could not toggle user status.' });
+  }
+};
+
+exports.changeUserRole = async (req, res) => {
+  try {
+    const { role } = req.body;
+    const validRoles = ['student', 'alumni', 'faculty', 'admin'];
+    if (!validRoles.includes(role)) return res.status(400).json({ error: 'Invalid role.' });
+    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    res.json({ message: 'Role updated.', user });
+  } catch (error) {
+    res.status(500).json({ error: 'Could not change role.' });
+  }
+};
